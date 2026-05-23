@@ -2,6 +2,28 @@
 
 An ABAP Cloud solution for automatically scanning and migrating classic CDS views to entity-based CDS views in SAP systems.
 
+[![abapGit](https://img.shields.io/badge/abapGit-compatible-brightgreen)](https://abapgit.org)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![SAP](https://img.shields.io/badge/SAP-7.50%2B-orange)](https://www.sap.com)
+
+## Quick Start
+
+### Install via abapGit (Recommended)
+
+```
+1. Open ZABAPGIT in your SAP system
+2. Click "New Online"
+3. URL: https://github.com/jeremyyma/CDS2Entity.git
+4. Package: ZCDS_MIGRATION (or $TMP for testing)
+5. Pull → Activate
+```
+
+📖 **Detailed Installation**: See [INSTALL_ABAPGIT.md](INSTALL_ABAPGIT.md)
+
+### Download ZIP for Offline Installation
+
+Download: [CDS2Entity-abapgit.zip](../../releases/latest) (42 KB)
+
 ## Overview
 
 This tool helps ABAP Cloud developers transition from classic CDS views to the modern entity-based CDS approach by:
@@ -177,18 +199,22 @@ define view entity Z_MY_CLASSIC_VIEW_ENTITY
 
 ## Installation
 
-1. Create all class files in your ABAP system:
-   - `ZCL_CDS_SCANNER`
-   - `ZCL_CDS_DEPENDENCY_ANALYZER`
-   - `ZCL_CDS_MIGRATOR`
-   - `ZCL_CDS_MIGRATION_MANAGER`
+### Method 1: abapGit (Recommended) ⭐
 
-2. Create the report:
-   - `ZCDS_MIGRATION_TOOL`
+See detailed instructions in [INSTALL_ABAPGIT.md](INSTALL_ABAPGIT.md)
 
-3. Activate all objects
+```
+ZABAPGIT → New Online → https://github.com/jeremyyma/CDS2Entity.git
+```
 
-4. Assign appropriate authorizations
+### Method 2: Offline ZIP
+
+1. Download [CDS2Entity-abapgit.zip](../../releases/latest)
+2. ZABAPGIT → Import ZIP → Select file → Pull
+
+### Method 3: Manual Installation
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for manual setup instructions
 
 ## Prerequisites
 
