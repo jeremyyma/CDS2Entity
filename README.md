@@ -23,8 +23,13 @@ SE38 → ZCDS_MIGRATION → Enter package → F8
 ## What It Does
 
 1. **Finds** classic CDS views in a package
-2. **Transforms** them to entity-based CDS
-3. **Shows** results in ALV grid
+2. **Removes** 3 deprecated annotations
+3. **Adds** 4 modern annotations
+4. **Transforms** syntax to entity format
+5. **Ensures** KEY fields are present
+6. **Shows** results in ALV grid
+
+**Result:** Fully modernized, ABAP Cloud-ready entity views!
 
 ## The Code
 
@@ -44,12 +49,23 @@ ENDLOOP.
 
 ## Transformations
 
-| From | To |
-|------|-----|
-| `DEFINE VIEW` | `DEFINE VIEW ENTITY` |
-| `@AbapCatalog.sqlViewName` | ❌ Removed (deprecated in entity views) |
-| No KEY | `key` added to first field |
-| Missing `@AccessControl` | Added with `#NOT_REQUIRED` |
+### Quick Overview
+
+| Transformation | Action |
+|----------------|--------|
+| `DEFINE VIEW` → `DEFINE VIEW ENTITY` | ✅ Updated |
+| `@AbapCatalog.sqlViewName` | ❌ Removed |
+| `@AbapCatalog.preserveKey` | ❌ Removed |
+| `@AbapCatalog.compiler.compareFilter` | ❌ Removed |
+| `@EndUserText.label` | ✅ Added |
+| `@AccessControl.authorizationCheck` | ✅ Added |
+| `@Metadata.ignorePropagatedAnnotations` | ✅ Added |
+| `@Metadata.allowExtensions` | ✅ Added |
+| First field → `key` | ✅ Enhanced |
+
+**Total: 8 modernizations applied automatically!**
+
+📖 **See [TRANSFORMATION_GUIDE.md](TRANSFORMATION_GUIDE.md) for complete details**
 
 ## Installation
 
@@ -102,14 +118,24 @@ define view Z_MY_VIEW as select from scarr {
 
 ### After (Entity CDS)
 ```abap
+@EndUserText.label: 'CDS Entity View'
 @AccessControl.authorizationCheck: #NOT_REQUIRED
+@Metadata.ignorePropagatedAnnotations: true
+@Metadata.allowExtensions: true
 define view entity Z_MY_VIEW_V2 as select from scarr {
   key carrid,
   carrname
 }
 ```
 
-**Note:** `sqlViewName` annotation is removed as it's deprecated in CDS entity views.
+**Clean, modern, and ABAP Cloud ready!** ✨
+
+**Key improvements:**
+- ❌ Removed deprecated `sqlViewName`
+- ✅ Added required `@EndUserText.label`
+- ✅ Added required `@AccessControl`
+- ✅ Added recommended metadata annotations
+- ✅ Added `key` to first field
 
 ## What's Included
 

@@ -40,16 +40,19 @@ CLASS ltc_cds_migrator IMPLEMENTATION.
 
 
   METHOD test_transform.
-    " Given
+    " Given - Classic CDS with deprecated annotations
     DATA(ls_cds) = VALUE zcl_cds_migrator=>ty_cds(
       name   = 'Z_TEST'
-      source = |@AbapCatalog.sqlViewName: 'ZTEST'\ndefine view Z_TEST as select from table \{ field \}|
+      source = |@AbapCatalog.sqlViewName: 'ZTEST'\n| &&
+               |@AbapCatalog.preserveKey: true\n| &&
+               |@AbapCatalog.compiler.compareFilter: true\n| &&
+               |define view Z_TEST as select from table \{ field \}|
     ).
 
     " When
     mo_cut->transform( CHANGING cs_cds = ls_cds ).
 
-    " Then
+    " Then - Basic transformation
     cl_abap_unit_assert=>assert_equals(
       act = ls_cds-new_sql
       exp = 'ZTEST_V2'
@@ -68,12 +71,45 @@ CLASS ltc_cds_migrator IMPLEMENTATION.
       msg = 'Should add key to first field'
     ).
 
-    " New test: sqlViewName should be removed
+    " Then - Deprecated annotations removed
     DATA(lv_lower) = to_lower( ls_cds-new_source ).
+
     cl_abap_unit_assert=>assert_true(
       act = xsdbool( NOT lv_lower CS 'sqlviewname' )
       msg = 'Should remove deprecated sqlViewName annotation'
     ).
+
+    cl_abap_unit_assert=>assert_true(
+      act = xsdbool( NOT lv_lower CS 'preservekey' )
+      msg = 'Should remove deprecated preserveKey annotation'
+    ).
+
+    cl_abap_unit_assert=>assert_true(
+      act = xsdbool( NOT lv_lower CS 'comparefilter' )
+      msg = 'Should remove deprecated compareFilter annotation'
+    ).
+
+    " Then - Required annotations added
+    cl_abap_unit_assert=>assert_true(
+      act = xsdbool( lv_lower CS '@endusertext.label' )
+      msg = 'Should add @EndUserText.label annotation'
+    ).
+
+    cl_abap_unit_assert=>assert_true(
+      act = xsdbool( lv_lower CS '@accesscontrol' )
+      msg = 'Should add @AccessControl annotation'
+    ).
+
+    cl_abap_unit_assert=>assert_true(
+      act = xsdbool( lv_lower CS '@metadata.ignorepropagatedannotations' )
+      msg = 'Should add @Metadata.ignorePropagatedAnnotations'
+    ).
+
+    cl_abap_unit_assert=>assert_true(
+      act = xsdbool( lv_lower CS '@metadata.allowextensions' )
+      msg = 'Should add @Metadata.allowExtensions'
+    ).
+  ENDMETHOD.
   ENDMETHOD.
 
 ENDCLASS.

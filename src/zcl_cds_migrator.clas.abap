@@ -113,25 +113,62 @@ CLASS zcl_cds_migrator IMPLEMENTATION.
 
   METHOD generate_entity_source.
     DATA(lv_result) = iv_source.
+    DATA(lv_label) = ''.
 
-    " Transform DEFINE VIEW → DEFINE VIEW ENTITY
+    " Step 1: Transform DEFINE VIEW → DEFINE VIEW ENTITY
     lv_result = replace( val  = lv_result
                          sub  = 'DEFINE VIEW '
                          with = 'DEFINE VIEW ENTITY '
                          occ  = 1 ).
 
-    " Remove deprecated sqlViewName annotation (not supported in entity views)
+    " Step 2: Remove deprecated annotations (not supported in entity views)
+    " Remove @AbapCatalog.sqlViewName
     lv_result = replace( val   = lv_result
                          regex = '@AbapCatalog\.sqlViewName\s*:\s*''[^'']+''[\s\n]*'
                          with  = ''
                          occ   = 0 ).
 
-    " Add @AccessControl if missing
+    " Remove @AbapCatalog.preserveKey
+    lv_result = replace( val   = lv_result
+                         regex = '@AbapCatalog\.preserveKey\s*:\s*(true|false)[\s\n]*'
+                         with  = ''
+                         occ   = 0 ).
+
+    " Remove @AbapCatalog.compiler.compareFilter
+    lv_result = replace( val   = lv_result
+                         regex = '@AbapCatalog\.compiler\.compareFilter\s*:\s*(true|false)[\s\n]*'
+                         with  = ''
+                         occ   = 0 ).
+
+    " Step 3: Extract existing @EndUserText.label if present
+    FIND REGEX '@EndUserText\.label\s*:\s*''([^'']+)''' IN lv_result
+      SUBMATCHES lv_label IGNORING CASE.
+
+    " Step 4: Add required annotations if missing
+    " Add @EndUserText.label (required for entity views)
+    IF NOT lv_result CS '@EndUserText.label'.
+      IF lv_label IS INITIAL.
+        lv_label = 'CDS Entity View'. " Default label
+      ENDIF.
+      lv_result = |@EndUserText.label: '{ lv_label }'\n{ lv_result }|.
+    ENDIF.
+
+    " Add @AccessControl.authorizationCheck (required)
     IF NOT lv_result CS '@AccessControl'.
       lv_result = |@AccessControl.authorizationCheck: #NOT_REQUIRED\n{ lv_result }|.
     ENDIF.
 
-    " Add KEY to first field if no KEY exists
+    " Add @Metadata.ignorePropagatedAnnotations (best practice)
+    IF NOT lv_result CS '@Metadata.ignorePropagatedAnnotations'.
+      lv_result = |@Metadata.ignorePropagatedAnnotations: true\n{ lv_result }|.
+    ENDIF.
+
+    " Add @Metadata.allowExtensions (enable CDS extension)
+    IF NOT lv_result CS '@Metadata.allowExtensions'.
+      lv_result = |@Metadata.allowExtensions: true\n{ lv_result }|.
+    ENDIF.
+
+    " Step 5: Add KEY to first field if no KEY exists (required in entity views)
     IF NOT lv_result CS 'key ' AND NOT lv_result CS 'KEY '.
       lv_result = replace( val   = lv_result
                            regex = '(\{\s*)(\w+)'
