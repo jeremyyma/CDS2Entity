@@ -54,19 +54,22 @@ CLASS zcl_cds_migrator IMPLEMENTATION.
 
   METHOD find_in_package.
     " Find CDS views with sqlViewName annotation in specified package
-    SELECT ddheadanno~name AS ddlname,
+    " DDHEADANNO structure: DDLNAME (object name), NAME (annotation name), VALUE
+    SELECT ddheadanno~ddlname,
            ddheadanno~value
       FROM ddheadanno
       INNER JOIN tadir
-        ON tadir~obj_name = ddheadanno~name
-      WHERE ddheadanno~annoname = 'ABAPCATALOG.SQLVIEWNAME'
+        ON tadir~obj_name = ddheadanno~ddlname
+      WHERE ddheadanno~name = 'ABAPCATALOG.SQLVIEWNAME'
         AND tadir~pgmid = 'R3TR'
         AND tadir~object = 'DDLS'
         AND tadir~devclass = @iv_package
       INTO TABLE @DATA(lt_classic_cds).
 
     LOOP AT lt_classic_cds ASSIGNING FIELD-SYMBOL(<cds>).
-      DATA(lv_source) = read_source( <cds>-ddlname ).
+      " Convert to correct type (C 240 -> C 40)
+      DATA(lv_ddlname) = CONV ddlname( <cds>-ddlname ).
+      DATA(lv_source) = read_source( lv_ddlname ).
       CHECK lv_source IS NOT INITIAL.
 
       " Extract SQL view name from annotation value (format: 'VIEWNAME')
@@ -74,7 +77,7 @@ CLASS zcl_cds_migrator IMPLEMENTATION.
       REPLACE ALL OCCURRENCES OF '''' IN lv_sql_view WITH ''.
 
       APPEND VALUE #(
-        name       = <cds>-ddlname
+        name       = lv_ddlname
         sql_view   = lv_sql_view
         source     = lv_source
         is_classic = abap_true
