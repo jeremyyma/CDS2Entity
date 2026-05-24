@@ -53,31 +53,33 @@ ENDCLASS.
 CLASS zcl_cds_migrator IMPLEMENTATION.
 
   METHOD find_in_package.
-    " Find CDS views with sqlViewName annotation in specified package
-    " DDHEADANNO structure: DDLNAME (object name), NAME (annotation name), VALUE
-    SELECT ddheadanno~ddlname,
-           ddheadanno~value
-      FROM ddheadanno
-      INNER JOIN tadir
-        ON tadir~obj_name = ddheadanno~ddlname
-      WHERE ddheadanno~name = 'ABAPCATALOG.SQLVIEWNAME'
-        AND tadir~pgmid = 'R3TR'
-        AND tadir~object = 'DDLS'
-        AND tadir~devclass = @iv_package
-      INTO TABLE @DATA(lt_classic_cds).
+    " Find classic CDS views in package - first get all DDLS, then filter by annotation
 
-    LOOP AT lt_classic_cds ASSIGNING FIELD-SYMBOL(<cds>).
-      " Convert to correct type (C 240 -> C 40)
-      DATA(lv_ddlname) = CONV ddlname( <cds>-ddlname ).
-      DATA(lv_source) = read_source( lv_ddlname ).
-      CHECK lv_source IS NOT INITIAL.
+    " Step 1: Get all DDLS objects in package
+    SELECT obj_name FROM tadir
+      WHERE pgmid = 'R3TR'
+        AND object = 'DDLS'
+        AND devclass = @iv_package
+      INTO TABLE @DATA(lt_ddls).
 
-      " Extract SQL view name from annotation value (format: 'VIEWNAME')
-      DATA(lv_sql_view) = <cds>-value.
-      REPLACE ALL OCCURRENCES OF '''' IN lv_sql_view WITH ''.
+    CHECK lt_ddls IS NOT INITIAL.
+
+    " Step 2: Check each one for classic CDS (has sqlViewName annotation)
+    LOOP AT lt_ddls ASSIGNING FIELD-SYMBOL(<ddls>).
+      DATA(lv_source) = read_source( <ddls>-obj_name ).
+
+      " Check if classic CDS (has sqlViewName, not VIEW ENTITY)
+      CHECK is_classic( lv_source ).
+
+      " Extract SQL view name from source
+      DATA(lv_sql_view) = ''.
+      FIND REGEX 'sqlViewName\s*:\s*''([^'']+)'''
+        IN lv_source
+        SUBMATCHES lv_sql_view
+        IGNORING CASE.
 
       APPEND VALUE #(
-        name       = lv_ddlname
+        name       = <ddls>-obj_name
         sql_view   = lv_sql_view
         source     = lv_source
         is_classic = abap_true
