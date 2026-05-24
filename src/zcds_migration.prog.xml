@@ -3,7 +3,7 @@
  <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
   <asx:values>
    <PROGDIR>
-    <NAME>ZCDS_MIGRATION_EXAMPLES</NAME>
+    <NAME>ZCDS_MIGRATION</NAME>
     <SUBC>1</SUBC>
     <RSTAT>T</RSTAT>
     <RLOAD>E</RLOAD>
@@ -13,8 +13,14 @@
    <TPOOL>
     <item>
      <ID>R</ID>
-     <ENTRY>CDS Migration Examples</ENTRY>
-     <LENGTH>23</LENGTH>
+     <ENTRY>CDS Migration Tool</ENTRY>
+     <LENGTH>18</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_PACK</KEY>
+     <ENTRY>Package</ENTRY>
+     <LENGTH>7</LENGTH>
     </item>
    </TPOOL>
   </asx:values>
