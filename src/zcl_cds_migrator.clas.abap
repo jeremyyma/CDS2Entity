@@ -54,12 +54,12 @@ CLASS zcl_cds_migrator IMPLEMENTATION.
 
   METHOD find_in_package.
     " Find CDS views with sqlViewName annotation in specified package
-    SELECT ddheadanno~ddlname,
+    SELECT ddheadanno~name AS ddlname,
            ddheadanno~value
       FROM ddheadanno
       INNER JOIN tadir
-        ON tadir~obj_name = ddheadanno~ddlname
-      WHERE ddheadanno~name = 'ABAPCATALOG.SQLVIEWNAME'
+        ON tadir~obj_name = ddheadanno~name
+      WHERE ddheadanno~annoname = 'ABAPCATALOG.SQLVIEWNAME'
         AND tadir~pgmid = 'R3TR'
         AND tadir~object = 'DDLS'
         AND tadir~devclass = @iv_package
