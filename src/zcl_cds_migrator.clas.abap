@@ -64,18 +64,28 @@ CLASS zcl_cds_migrator IMPLEMENTATION.
 
 
   METHOD read_source.
-    DATA lo_ddl TYPE REF TO if_dd_ddl_handler.
     DATA lt_source TYPE string_table.
 
     TRY.
-        lo_ddl = cl_dd_ddl_handler_factory=>create( )->read( CONV #( iv_name ) ).
+        " Read DDL source using database table
+        SELECT SINGLE source FROM ddddlsrc
+          WHERE ddlname = @iv_name
+          INTO @rv_source.
 
-        lt_source = lo_ddl->get_source( ).
+        IF sy-subrc <> 0.
+          " Alternative: Try reading from DDDDLSRC02BT (multi-line source)
+          SELECT source_line FROM ddddlsrc02bt
+            WHERE ddlname = @iv_name
+            ORDER BY line_num
+            INTO TABLE @lt_source.
 
-        rv_source = concat_lines_of(
-          table = lt_source
-          sep   = cl_abap_char_utilities=>newline
-        ).
+          IF sy-subrc = 0.
+            rv_source = concat_lines_of(
+              table = lt_source
+              sep   = cl_abap_char_utilities=>newline
+            ).
+          ENDIF.
+        ENDIF.
       CATCH cx_root.
         CLEAR rv_source.
     ENDTRY.
