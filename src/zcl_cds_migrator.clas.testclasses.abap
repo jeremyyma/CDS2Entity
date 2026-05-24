@@ -53,7 +53,7 @@ CLASS ltc_cds_migrator IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = ls_cds-new_sql
       exp = 'ZTEST_V2'
-      msg = 'Should append _V2 to SQL view name'
+      msg = 'Should extract and append _V2 to SQL view name'
     ).
 
     cl_abap_unit_assert=>assert_char_cp(
@@ -66,6 +66,13 @@ CLASS ltc_cds_migrator IMPLEMENTATION.
       act = ls_cds-new_source
       exp = '*key field*'
       msg = 'Should add key to first field'
+    ).
+
+    " New test: sqlViewName should be removed
+    DATA(lv_lower) = to_lower( ls_cds-new_source ).
+    cl_abap_unit_assert=>assert_true(
+      act = xsdbool( NOT lv_lower CS 'sqlviewname' )
+      msg = 'Should remove deprecated sqlViewName annotation'
     ).
   ENDMETHOD.
 

@@ -47,9 +47,9 @@ ENDLOOP.
 | From | To |
 |------|-----|
 | `DEFINE VIEW` | `DEFINE VIEW ENTITY` |
-| `sqlViewName: 'ZOLD'` | `sqlViewName: 'ZOLD_V2'` |
+| `@AbapCatalog.sqlViewName` | ❌ Removed (deprecated in entity views) |
 | No KEY | `key` added to first field |
-| Missing annotations | `@AccessControl` added |
+| Missing `@AccessControl` | Added with `#NOT_REQUIRED` |
 
 ## Installation
 
@@ -103,12 +103,13 @@ define view Z_MY_VIEW as select from scarr {
 ### After (Entity CDS)
 ```abap
 @AccessControl.authorizationCheck: #NOT_REQUIRED
-@AbapCatalog.sqlViewName: 'ZMYVIEW_V2'
 define view entity Z_MY_VIEW_V2 as select from scarr {
   key carrid,
   carrname
 }
 ```
+
+**Note:** `sqlViewName` annotation is removed as it's deprecated in CDS entity views.
 
 ## What's Included
 

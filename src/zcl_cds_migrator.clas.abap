@@ -120,11 +120,11 @@ CLASS zcl_cds_migrator IMPLEMENTATION.
                          with = 'DEFINE VIEW ENTITY '
                          occ  = 1 ).
 
-    " Update SQL view name
+    " Remove deprecated sqlViewName annotation (not supported in entity views)
     lv_result = replace( val   = lv_result
-                         regex = 'sqlViewName\s*:\s*''[^'']+'''
-                         with  = |sqlViewName: '{ iv_new_sql_view }'|
-                         occ   = 1 ).
+                         regex = '@AbapCatalog\.sqlViewName\s*:\s*''[^'']+''[\s\n]*'
+                         with  = ''
+                         occ   = 0 ).
 
     " Add @AccessControl if missing
     IF NOT lv_result CS '@AccessControl'.
