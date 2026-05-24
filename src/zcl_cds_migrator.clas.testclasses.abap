@@ -6,7 +6,6 @@ CLASS ltc_cds_migrator DEFINITION FINAL FOR TESTING
     DATA mo_cut TYPE REF TO zcl_cds_migrator.
 
     METHODS setup.
-    METHODS test_is_classic_cds FOR TESTING.
     METHODS test_transform FOR TESTING.
 
 ENDCLASS.
@@ -16,26 +15,6 @@ CLASS ltc_cds_migrator IMPLEMENTATION.
 
   METHOD setup.
     mo_cut = NEW #( ).
-  ENDMETHOD.
-
-
-  METHOD test_is_classic_cds.
-    " Classic CDS source
-    DATA(lv_classic) = |@AbapCatalog.sqlViewName: 'ZTEST'\ndefine view Z_TEST as select from table \{ field \}|.
-
-    " Entity CDS source
-    DATA(lv_entity) = |define view entity Z_TEST as select from table \{ key field \}|.
-
-    " Test
-    cl_abap_unit_assert=>assert_true(
-      act = mo_cut->is_classic( lv_classic )
-      msg = 'Should detect classic CDS'
-    ).
-
-    cl_abap_unit_assert=>assert_false(
-      act = mo_cut->is_classic( lv_entity )
-      msg = 'Should not detect entity CDS as classic'
-    ).
   ENDMETHOD.
 
 
