@@ -4,6 +4,8 @@
 
 This document details all transformations applied when migrating classic CDS views to modern entity-based CDS views.
 
+**Detection Method:** Classic CDS views are identified by querying the DDHEADANNO table for the `ABAPCATALOG.SQLVIEWNAME` annotation, which is the definitive marker of classic CDS views.
+
 ---
 
 ## 🔄 Complete Transformation List

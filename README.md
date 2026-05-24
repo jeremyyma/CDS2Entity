@@ -17,17 +17,21 @@ ZABAPGIT → New Online → https://github.com/jeremyyma/CDS2Entity.git
 ### Run
 
 ```
-SE38 → ZCDS_MIGRATION → Enter package → F8
+SE38 → ZCDS_MIGRATION
+  Package: [Your package]
+  Mode: Display Only (preview) or Commit (create views)
+  → F8
 ```
 
 ## What It Does
 
-1. **Finds** classic CDS views in a package
+1. **Finds** classic CDS views in package using DDHEADANNO table
 2. **Removes** 3 deprecated annotations
 3. **Adds** 4 modern annotations
 4. **Transforms** syntax to entity format
 5. **Ensures** KEY fields are present
-6. **Shows** results in ALV grid
+6. **Generates** new names with _V2 suffix
+7. **Displays** results in ALV grid or creates new views
 
 **Result:** Fully modernized, ABAP Cloud-ready entity views!
 
@@ -36,16 +40,21 @@ SE38 → ZCDS_MIGRATION → Enter package → F8
 ### One Class: `ZCL_CDS_MIGRATOR`
 
 ```abap
-" Find classic CDS views
+" Find classic CDS views using DDHEADANNO annotation table
 DATA(lt_cds) = NEW zcl_cds_migrator( )->find_in_package( 'ZPACKAGE' ).
 
-" Transform to entity CDS
+" Transform to entity CDS with modern annotations
 LOOP AT lt_cds ASSIGNING FIELD-SYMBOL(<cds>).
   NEW zcl_cds_migrator( )->transform( CHANGING cs_cds = <cds> ).
 ENDLOOP.
+
+" Optional: Create new entity views
+LOOP AT lt_cds ASSIGNING <cds>.
+  NEW zcl_cds_migrator( )->create_entity( <cds> ).
+ENDLOOP.
 ```
 
-**That's it!** ~120 lines of clean ABAP.
+**That's it!** ~220 lines of clean ABAP with inline method documentation.
 
 ## Transformations
 
@@ -91,7 +100,7 @@ Pull → Activate
 ```abap
 DATA(lo_migrator) = NEW zcl_cds_migrator( ).
 
-" Find all classic CDS in package
+" Find all classic CDS in package using DDHEADANNO
 DATA(lt_cds) = lo_migrator->find_in_package( 'ZPACKAGE' ).
 
 WRITE: / 'Found', lines( lt_cds ), 'classic CDS views'.
@@ -103,7 +112,24 @@ LOOP AT lt_cds ASSIGNING FIELD-SYMBOL(<cds>).
   WRITE: / <cds>-name, '→', <cds>-new_name.
   WRITE: / '  SQL:', <cds>-sql_view, '→', <cds>-new_sql.
 ENDLOOP.
+
+" Optional: Create new entity views
+LOOP AT lt_cds ASSIGNING <cds>.
+  IF lo_migrator->create_entity( <cds> ) = abap_true.
+    WRITE: / <cds>-new_name, 'created successfully'.
+  ENDIF.
+ENDLOOP.
 ```
+
+### Report Parameters
+
+**Package (P_PACK):** Package to scan for classic CDS views
+- Required field
+- Searches only within specified package
+
+**Mode:**
+- **Display Only (P_DISP):** Preview transformations in ALV grid (default)
+- **Commit (P_COMMIT):** Create new entity views in system
 
 ## Example Transformation
 

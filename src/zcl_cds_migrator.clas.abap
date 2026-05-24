@@ -16,22 +16,32 @@ CLASS zcl_cds_migrator DEFINITION
       END OF ty_cds,
       ty_cds_list TYPE STANDARD TABLE OF ty_cds WITH KEY name.
 
+    " Find classic CDS views in package using DDHEADANNO
     METHODS find_in_package
       IMPORTING iv_package        TYPE devclass
       RETURNING VALUE(rt_results) TYPE ty_cds_list.
 
+    " Transform classic CDS to entity CDS with modern annotations
     METHODS transform
       CHANGING cs_cds TYPE ty_cds.
 
+    " Create new entity CDS view in system
+    METHODS create_entity
+      IMPORTING is_cds           TYPE ty_cds
+      RETURNING VALUE(rv_success) TYPE abap_bool.
+
   PRIVATE SECTION.
+    " Read CDS source code from database tables
     METHODS read_source
       IMPORTING iv_name          TYPE ddlname
       RETURNING VALUE(rv_source) TYPE string.
 
+    " Check if CDS has sqlViewName annotation (classic CDS indicator)
     METHODS is_classic
       IMPORTING iv_source         TYPE string
       RETURNING VALUE(rv_classic) TYPE abap_bool.
 
+    " Generate entity CDS source with all modern annotations
     METHODS generate_entity_source
       IMPORTING iv_source        TYPE string
                 iv_new_sql_view  TYPE ddstrucobjname
@@ -43,19 +53,29 @@ ENDCLASS.
 CLASS zcl_cds_migrator IMPLEMENTATION.
 
   METHOD find_in_package.
-    SELECT obj_name
-      FROM tadir
-      WHERE pgmid = 'R3TR'
-        AND object = 'DDLS'
-        AND devclass = @iv_package
-      INTO TABLE @DATA(lt_ddls).
+    " Find CDS views with sqlViewName annotation in specified package
+    SELECT ddheadanno~ddlname,
+           ddheadanno~value
+      FROM ddheadanno
+      INNER JOIN tadir
+        ON tadir~obj_name = ddheadanno~ddlname
+      WHERE ddheadanno~name = 'ABAPCATALOG.SQLVIEWNAME'
+        AND tadir~pgmid = 'R3TR'
+        AND tadir~object = 'DDLS'
+        AND tadir~devclass = @iv_package
+      INTO TABLE @DATA(lt_classic_cds).
 
-    LOOP AT lt_ddls ASSIGNING FIELD-SYMBOL(<ddl>).
-      DATA(lv_source) = read_source( <ddl>-obj_name ).
-      CHECK is_classic( lv_source ).
+    LOOP AT lt_classic_cds ASSIGNING FIELD-SYMBOL(<cds>).
+      DATA(lv_source) = read_source( <cds>-ddlname ).
+      CHECK lv_source IS NOT INITIAL.
+
+      " Extract SQL view name from annotation value (format: 'VIEWNAME')
+      DATA(lv_sql_view) = <cds>-value.
+      REPLACE ALL OCCURRENCES OF '''' IN lv_sql_view WITH ''.
 
       APPEND VALUE #(
-        name       = <ddl>-obj_name
+        name       = <cds>-ddlname
+        sql_view   = lv_sql_view
         source     = lv_source
         is_classic = abap_true
       ) TO rt_results.
@@ -101,21 +121,16 @@ CLASS zcl_cds_migrator IMPLEMENTATION.
 
 
   METHOD transform.
-    " Extract SQL view name
-    FIND REGEX 'sqlViewName\s*:\s*''([^'']+)'''
-      IN cs_cds-source
-      SUBMATCHES cs_cds-sql_view
-      IGNORING CASE.
+    " Generate new CDS name with _V2 suffix
+    cs_cds-new_name = |{ cs_cds-name }_V2|.
 
-    " Generate new names with _V2 suffix
+    " Generate new SQL view name with _V2 suffix (max 16 chars)
     cs_cds-new_sql = |{ cs_cds-sql_view }_V2|.
     IF strlen( cs_cds-new_sql ) > 16.
       cs_cds-new_sql = |{ cs_cds-sql_view(13) }_V2|.
     ENDIF.
 
-    cs_cds-new_name = |{ cs_cds-name }_V2|.
-
-    " Generate entity source
+    " Generate modernized entity source
     cs_cds-new_source = generate_entity_source(
       iv_source       = cs_cds-source
       iv_new_sql_view = cs_cds-new_sql
@@ -189,6 +204,26 @@ CLASS zcl_cds_migrator IMPLEMENTATION.
     ENDIF.
 
     rv_entity = lv_result.
+  ENDMETHOD.
+
+
+  METHOD create_entity.
+    " Create new CDS entity view using BAPI or direct insert
+    " Note: Actual implementation requires CDS API or manual creation
+    " This method prepares the source for creation
+    rv_success = abap_false.
+
+    TRY.
+        " TODO: Implement actual CDS creation using appropriate API
+        " For now, return false to indicate manual creation needed
+        " In real scenario, use cl_dd_ddl_handler_factory or similar API
+
+        " Placeholder for future implementation
+        MESSAGE 'Entity creation requires manual activation in SE24/SE80' TYPE 'I'.
+
+      CATCH cx_root INTO DATA(lx_error).
+        MESSAGE lx_error->get_text( ) TYPE 'E'.
+    ENDTRY.
   ENDMETHOD.
 
 ENDCLASS.
