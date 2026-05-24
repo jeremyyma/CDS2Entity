@@ -64,14 +64,16 @@ CLASS zcl_cds_migrator IMPLEMENTATION.
 
 
   METHOD read_source.
+    DATA lo_ddl TYPE REF TO if_dd_ddl_handler.
+    DATA lt_source TYPE string_table.
+
     TRY.
-        cl_dd_ddl_handler_factory=>create( )->read(
-          EXPORTING name   = CONV #( iv_name )
-          RECEIVING result = DATA(lo_ddl)
-        ).
+        lo_ddl = cl_dd_ddl_handler_factory=>create( )->read( CONV #( iv_name ) ).
+
+        lt_source = lo_ddl->get_source( ).
 
         rv_source = concat_lines_of(
-          table = lo_ddl->get_source( )
+          table = lt_source
           sep   = cl_abap_char_utilities=>newline
         ).
       CATCH cx_root.

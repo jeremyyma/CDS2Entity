@@ -89,6 +89,5 @@ CLASS ltc_cds_migrator IMPLEMENTATION.
       msg = 'Should add @Metadata.allowExtensions'
     ).
   ENDMETHOD.
-  ENDMETHOD.
 
 ENDCLASS.
