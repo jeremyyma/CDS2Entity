@@ -84,28 +84,33 @@ CLASS zcl_cds_migrator IMPLEMENTATION.
 
 
   METHOD read_source.
-    DATA lt_source TYPE string_table.
-
     TRY.
-        " Read DDL source using database table
-        SELECT SINGLE source FROM ddddlsrc
-          WHERE ddlname = @iv_name
-          INTO @rv_source.
+        " Read CDS source from repository
+        DATA lt_source_tab TYPE TABLE OF string.
 
-        IF sy-subrc <> 0.
-          " Alternative: Try reading from DDDDLSRC02BT (multi-line source)
-          SELECT source_line FROM ddddlsrc02bt
-            WHERE ddlname = @iv_name
-            ORDER BY line_num
-            INTO TABLE @lt_source.
+        " Use READ REPORT to get source (works for DDLS objects)
+        READ REPORT iv_name INTO lt_source_tab.
 
-          IF sy-subrc = 0.
-            rv_source = concat_lines_of(
-              table = lt_source
-              sep   = cl_abap_char_utilities=>newline
-            ).
-          ENDIF.
+        IF sy-subrc = 0 AND lt_source_tab IS NOT INITIAL.
+          " Convert table to single string
+          rv_source = concat_lines_of(
+            table = lt_source_tab
+            sep   = cl_abap_char_utilities=>newline
+          ).
+        ELSE.
+          " Fallback: Try using CL_DDL_TOOLS if available
+          TRY.
+              CALL METHOD ('CL_DDL_TOOLS')=>('READ_DDL_SOURCE')
+                EXPORTING
+                  iv_ddlname = iv_name
+                RECEIVING
+                  rv_source  = rv_source.
+            CATCH cx_sy_dyn_call_error.
+              " Method not available, return empty
+              CLEAR rv_source.
+          ENDTRY.
         ENDIF.
+
       CATCH cx_root.
         CLEAR rv_source.
     ENDTRY.
