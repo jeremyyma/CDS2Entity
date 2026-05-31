@@ -1,256 +1,158 @@
-# CDS2Entity - Architecture Diagram
+# CDS2Entity - Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        CDS2Entity Migration Tool                    │
-│                     (ABAP Cloud Solution)                           │
-└─────────────────────────────────────────────────────────────────────┘
+## Overview
 
-┌─────────────────────────────────────────────────────────────────────┐
-│                         USER INTERFACE                               │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│   ┌──────────────────────────────────────────────────────────────┐ │
-│   │  ZCDS_MIGRATION_TOOL (ABAP Report)                           │ │
-│   │  - Selection Screen (Package, Options)                       │ │
-│   │  - ALV Grid Display (CDS List with Checkboxes)               │ │
-│   │  - Result Display (Summary & Details)                        │ │
-│   └──────────────────────────────────────────────────────────────┘ │
-│                              │                                       │
-└──────────────────────────────┼───────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                      ORCHESTRATION LAYER                             │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│   ┌──────────────────────────────────────────────────────────────┐ │
-│   │  ZCL_CDS_MIGRATION_MANAGER                                   │ │
-│   │  ┌────────────────────────────────────────────────────────┐  │ │
-│   │  │ + execute_migration()                                  │  │ │
-│   │  │ + get_cds_list_with_dependencies()                     │  │ │
-│   │  │ + save_migration_results()                             │  │ │
-│   │  └────────────────────────────────────────────────────────┘  │ │
-│   └──────────────────────────────────────────────────────────────┘ │
-│                 │              │              │                      │
-│        ┌────────┘              │              └────────┐            │
-└────────┼───────────────────────┼───────────────────────┼────────────┘
-         ▼                       ▼                       ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                        BUSINESS LOGIC LAYER                          │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐     │
-│  │              │      │              │      │              │     │
-│  │ZCL_CDS_      │      │ZCL_CDS_      │      │ZCL_CDS_      │     │
-│  │SCANNER       │      │DEPENDENCY_   │      │MIGRATOR      │     │
-│  │              │      │ANALYZER      │      │              │     │
-│  ├──────────────┤      ├──────────────┤      ├──────────────┤     │
-│  │              │      │              │      │              │     │
-│  │+ scan_       │      │+ extract_    │      │+ migrate_    │     │
-│  │  package()   │      │  dependencies│      │  single_cds()│     │
-│  │              │      │  ()          │      │              │     │
-│  │+ is_classic_ │      │              │      │+ migrate_    │     │
-│  │  cds()       │      │+ get_        │      │  multiple_   │     │
-│  │              │      │  dependent_  │      │  cds()       │     │
-│  │+ get_cds_    │      │  views()     │      │              │     │
-│  │  source()    │      │              │      │+ generate_   │     │
-│  │              │      │+ analyze_    │      │  entity_     │     │
-│  │              │      │  migration_  │      │  source()    │     │
-│  │              │      │  order()     │      │              │     │
-│  │              │      │              │      │              │     │
-│  └──────────────┘      └──────────────┘      └──────────────┘     │
-│         │                     │                      │              │
-└─────────┼─────────────────────┼──────────────────────┼──────────────┘
-          │                     │                      │
-          ▼                     ▼                      ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                        DATA ACCESS LAYER                             │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│  ┌───────────┐  ┌───────────┐  ┌──────────┐  ┌──────────────────┐ │
-│  │ DD02L     │  │ TADIR     │  │ DDDDLSRC │  │ CL_DD_DDL_       │ │
-│  │ (CDS      │  │ (Object   │  │ (CDS     │  │ HANDLER_FACTORY  │ │
-│  │ Metadata) │  │ Directory)│  │ Source)  │  │ (DDL API)        │ │
-│  └───────────┘  └───────────┘  └──────────┘  └──────────────────┘ │
-│                                                                      │
-└─────────────────────────────────────────────────────────────────────┘
+CDS2Entity is intentionally small and focused. The current implementation has:
 
-═══════════════════════════════════════════════════════════════════════
-                           DATA FLOW
-═══════════════════════════════════════════════════════════════════════
+- 1 executable report: `ZCDS_MIGRATION`
+- 1 main class: `ZCL_CDS_MIGRATOR`
+- 1 ABAP Unit test class: `LTC_CDS_MIGRATOR`
 
-┌────────────┐
-│ 1. SCAN    │  User enters package → Scanner reads DD02L/TADIR
-└────────────┘  → Identifies classic CDS views → Returns list
-      │
-      ▼
-┌────────────┐
-│ 2. ANALYZE │  Analyzer parses CDS source code → Extracts
-└────────────┘  dependencies (FROM, JOIN, ASSOCIATION) → Builds
-      │         dependency graph → Performs topological sort
-      ▼
-┌────────────┐
-│ 3. SELECT  │  User reviews list in ALV grid → Checks boxes
-└────────────┘  for CDS views to migrate → Confirms selection
-      │
-      ▼
-┌────────────┐
-│ 4. MIGRATE │  Migrator processes each selected view in order
-└────────────┘  → Transforms annotations → Converts DEFINE VIEW
-      │         to DEFINE VIEW ENTITY → Adds KEY fields →
-      ▼         Updates sqlViewName (_V2 suffix)
-┌────────────┐
-│ 5. RESULT  │  Displays migration summary → Shows generated
-└────────────┘  source code → Optional: Save to system
-
-═══════════════════════════════════════════════════════════════════════
-                         COMPONENT DETAILS
-═══════════════════════════════════════════════════════════════════════
-
-┌─────────────────────────────────────────────────────────────────────┐
-│  ZCL_CDS_SCANNER                                                     │
-├─────────────────────────────────────────────────────────────────────┤
-│  Purpose: Discover and classify CDS views                           │
-│                                                                      │
-│  Input:  Package name, include subpackages flag                     │
-│  Output: Table of CDS views with metadata                           │
-│                                                                      │
-│  Key Logic:                                                          │
-│  - Query DD02L for views in package                                 │
-│  - Read CDS source via CL_DD_DDL_HANDLER_FACTORY                    │
-│  - Detect classic vs entity by checking for:                        │
-│    * sqlViewName annotation                                         │
-│    * DEFINE VIEW (not DEFINE VIEW ENTITY)                           │
-│    * Absence of entity-specific annotations                         │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────┐
-│  ZCL_CDS_DEPENDENCY_ANALYZER                                         │
-├─────────────────────────────────────────────────────────────────────┤
-│  Purpose: Extract and analyze CDS dependencies                      │
-│                                                                      │
-│  Input:  CDS view name or source code                               │
-│  Output: Dependency list, migration order                           │
-│                                                                      │
-│  Key Logic:                                                          │
-│  - Parse source code with REGEX patterns:                           │
-│    * FROM clause: 'FROM\s+([A-Z/_][A-Z0-9_/]*)'                    │
-│    * ASSOCIATION: 'ASSOCIATION\s+\[.*?\]\s+TO\s+(\w+)'            │
-│    * JOIN: '(LEFT|RIGHT|INNER|OUTER)?\s*JOIN\s+(\w+)'             │
-│  - Build dependency graph                                           │
-│  - Topological sort for migration order                             │
-│  - Detect circular dependencies                                     │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────┐
-│  ZCL_CDS_MIGRATOR                                                    │
-├─────────────────────────────────────────────────────────────────────┤
-│  Purpose: Generate entity-based CDS source code                     │
-│                                                                      │
-│  Input:  Classic CDS view metadata and source                       │
-│  Output: Entity CDS source code                                     │
-│                                                                      │
-│  Key Transformations:                                                │
-│  1. DEFINE VIEW → DEFINE VIEW ENTITY                                │
-│  2. sqlViewName: 'ZOLD' → sqlViewName: 'ZOLD_V2'                   │
-│  3. Add required annotations:                                       │
-│     - @AccessControl.authorizationCheck                             │
-│     - @Metadata.ignorePropagatedAnnotations                         │
-│     - @EndUserText.label                                            │
-│     - @AbapCatalog.viewEnhancementCategory                          │
-│  4. Ensure KEY fields (add to first field if missing)               │
-│  5. Transform associations to entity syntax                         │
-└─────────────────────────────────────────────────────────────────────┘
-
-═══════════════════════════════════════════════════════════════════════
-                        DATA STRUCTURES
-═══════════════════════════════════════════════════════════════════════
-
-TY_CDS_VIEW                     TY_DEPENDENCY
-├─ ddlname                      ├─ source_ddl
-├─ sql_view_name                ├─ target_ddl
-├─ package                      ├─ dependency_type
-├─ description                  └─ target_field
-├─ is_classic
-├─ entity_category              TY_MIGRATION_RESULT
-├─ source_code                  ├─ ddlname
-├─ dependencies[]               ├─ old_sql_view
-└─ selected                     ├─ new_ddl_name
-                                ├─ new_sql_view
-                                ├─ new_source_code
-                                ├─ status
-                                └─ message
-
-═══════════════════════════════════════════════════════════════════════
-                      PROCESSING SEQUENCE
-═══════════════════════════════════════════════════════════════════════
-
-User Input → Report Selection Screen
-     │
-     ├─→ [SCAN] ZCL_CDS_SCANNER
-     │       │
-     │       ├─→ Query DD02L (CDS metadata)
-     │       ├─→ Query TADIR (object directory)
-     │       ├─→ Read CDS source (CL_DD_DDL_HANDLER)
-     │       └─→ Return: tt_cds_views
-     │
-     ├─→ [ANALYZE] ZCL_CDS_DEPENDENCY_ANALYZER
-     │       │
-     │       ├─→ Parse CDS source (REGEX)
-     │       ├─→ Extract dependencies
-     │       ├─→ Build dependency graph
-     │       ├─→ Topological sort
-     │       └─→ Return: tt_dependencies + ordered list
-     │
-     ├─→ [DISPLAY] ALV Grid
-     │       │
-     │       └─→ User selects CDS views (checkboxes)
-     │
-     └─→ [MIGRATE] ZCL_CDS_MIGRATOR
-             │
-             ├─→ For each selected CDS (in order):
-             │   ├─→ Transform annotations
-             │   ├─→ Update SQL view name (+_V2)
-             │   ├─→ Convert to entity syntax
-             │   ├─→ Add KEY fields
-             │   └─→ Generate source code
-             │
-             └─→ [RESULT] Display summary & details
-
-═══════════════════════════════════════════════════════════════════════
-```
-
-## Architecture Principles
-
-### 1. **Separation of Concerns**
-- Scanner: Data discovery
-- Analyzer: Dependency management
-- Migrator: Code transformation
-- Manager: Orchestration
-
-### 2. **Single Responsibility**
-Each class has one clear purpose and can be used independently.
-
-### 3. **Dependency Injection**
-Manager creates and coordinates scanner, analyzer, and migrator instances.
-
-### 4. **Extensibility**
-- Easy to add new transformation rules
-- Support for custom annotations
-- Pluggable dependency extractors
-
-### 5. **Testability**
-- Unit tests for each component
-- Integration tests for full workflow
-- Mock-friendly design
-
-### 6. **ABAP Cloud Ready**
-- Uses released APIs where available
-- Compatible with ABAP Cloud restrictions
-- No use of deprecated features
+The architecture prioritizes simplicity, portability across systems, and minimal dependencies.
 
 ---
 
-**Architecture Version**: 1.0.0  
-**Last Updated**: 2026-05-23
+## Runtime Flow
+
+```
+User (SE38)
+  -> ZCDS_MIGRATION
+     -> ZCL_CDS_MIGRATOR=>find_in_package( )
+        -> SELECT TADIR (DDLS in package)
+        -> read_source( ) per DDLS
+        -> is_classic( ) filter
+     -> transform( ) per result
+        -> generate_entity_source( )
+     -> Display mode: ALV preview
+     -> Commit mode: create_entity( ) placeholder
+```
+
+---
+
+## Components
+
+### 1) Report `ZCDS_MIGRATION`
+
+Responsibilities:
+- Accept input package and mode (`Display` / `Commit`)
+- Call migration class APIs
+- Show preview list in ALV (`CL_SALV_TABLE`) in display mode
+- Show success/failure summary in commit mode
+
+Parameters:
+- `P_PACK` (required package)
+- `P_DISP` (default display mode)
+- `P_COMMIT` (commit mode)
+
+### 2) Class `ZCL_CDS_MIGRATOR`
+
+Public methods:
+- `FIND_IN_PACKAGE`
+- `TRANSFORM`
+- `CREATE_ENTITY`
+
+Private methods:
+- `READ_SOURCE`
+- `IS_CLASSIC`
+- `GENERATE_ENTITY_SOURCE`
+
+Data type:
+- `TY_CDS` and `TY_CDS_LIST` hold source, target names, transformed source, and classification flag.
+
+### 3) Test Class `LTC_CDS_MIGRATOR`
+
+Current automated coverage:
+- Validates transformation behavior in `TRANSFORM`
+- Checks syntax conversion to entity view
+- Checks removal of deprecated annotations
+- Checks addition of required/recommended annotations
+- Checks `KEY` auto-insertion
+
+---
+
+## Data Access Strategy
+
+### Object Discovery
+
+`FIND_IN_PACKAGE` reads repository objects from `TADIR`:
+- `PGMID = 'R3TR'`
+- `OBJECT = 'DDLS'`
+- `DEVCLASS = iv_package`
+
+### Source Retrieval
+
+`READ_SOURCE` uses a two-step fallback:
+1. `READ REPORT iv_name INTO lt_source_tab` (primary path)
+2. Dynamic fallback to `CL_DDL_TOOLS=>READ_DDL_SOURCE` when primary path returns empty or unavailable
+
+Reasoning:
+- `READ REPORT` is simple and reliable for many systems.
+- Dynamic call avoids hard compile dependency on releases where the class/method may differ.
+
+### Classic CDS Detection
+
+`IS_CLASSIC` returns true only when source:
+- Contains `sqlViewName`
+- Does not contain `VIEW ENTITY`
+
+This is source-based detection, not DDHEADANNO-driven detection.
+
+---
+
+## Transformation Pipeline
+
+`TRANSFORM` builds target names and delegates source rewrite to `GENERATE_ENTITY_SOURCE`.
+
+Concrete transformation actions currently implemented:
+1. `DEFINE VIEW` -> `DEFINE VIEW ENTITY` (first occurrence)
+2. Remove `@AbapCatalog.sqlViewName`
+3. Remove `@AbapCatalog.preserveKey`
+4. Remove `@AbapCatalog.compiler.compareFilter`
+5. Add `@EndUserText.label` if missing
+6. Add `@AccessControl.authorizationCheck: #NOT_REQUIRED` if missing
+7. Add `@Metadata.ignorePropagatedAnnotations: true` if missing
+8. Add `@Metadata.allowExtensions: true` if missing
+9. Add `key` to first field if no key exists
+
+Naming behavior:
+- New CDS name: `<old_name>_V2`
+- New SQL view marker: `<old_sql>_V2`, truncated to 16 chars if needed
+
+Note:
+- `GENERATE_ENTITY_SOURCE` currently does not consume `iv_new_sql_view` in replacements, because SQL view annotations are removed for entity syntax.
+
+---
+
+## Commit Behavior
+
+`CREATE_ENTITY` is currently a placeholder:
+- Returns `abap_false`
+- Emits informational message that manual activation/creation is needed
+- No repository write API is currently executed
+
+Impact:
+- Display mode is the effective production path today.
+- Commit mode is a scaffold for future implementation.
+
+---
+
+## Design Principles Applied
+
+- Keep it minimal (single core class)
+- Prefer stable language/runtime features
+- Fail safe (empty source or exceptions do not dump)
+- Keep report orchestration straightforward
+- Preserve extension point for future create API
+
+---
+
+## Known Limits
+
+- Scans direct package only (no subpackage recursion)
+- No dependency graph ordering
+- No automatic persistent creation of new DDLS objects yet
+
+---
+
+**Architecture Version**: 2.1.0
+**Last Updated**: 2026-05-30

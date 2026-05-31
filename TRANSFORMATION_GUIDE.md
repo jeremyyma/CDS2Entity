@@ -1,259 +1,113 @@
-# CDS Entity Modernization Guide
+# CDS Entity Transformation Guide
 
 ## Overview
 
-This document details all transformations applied when migrating classic CDS views to modern entity-based CDS views.
+This guide documents the exact transformations currently implemented in `ZCL_CDS_MIGRATOR`.
 
-**Detection Method:** Classic CDS views are identified by querying the DDHEADANNO table for the `ABAPCATALOG.SQLVIEWNAME` annotation, which is the definitive marker of classic CDS views.
+Classic CDS detection is source-based:
+- Contains `sqlViewName`
+- Does not contain `VIEW ENTITY`
 
----
-
-## 🔄 Complete Transformation List
-
-### 1. Core Syntax Transformation
-
-| Classic CDS | Entity CDS | Status |
-|-------------|------------|--------|
-| `DEFINE VIEW` | `DEFINE VIEW ENTITY` | ✅ Applied |
-| `DEFINE ROOT VIEW` | `DEFINE ROOT VIEW ENTITY` | ✅ Applied |
+Discovery source is `TADIR` (`R3TR/DDLS`) for the target package.
 
 ---
 
-## 2. ❌ Deprecated Annotations (REMOVED)
+## Transformation Actions
 
-### 2.1 @AbapCatalog.sqlViewName
+The implementation currently applies these actions to each classic CDS source:
 
-**Classic:**
-```abap
-@AbapCatalog.sqlViewName: 'ZMYVIEW'
-define view Z_MY_VIEW ...
-```
+1. Convert definition syntax
+   - `DEFINE VIEW ` -> `DEFINE VIEW ENTITY ` (first occurrence only)
 
-**Entity:**
-```abap
-define view entity Z_MY_VIEW_V2 ...
-```
+2. Remove deprecated annotations
+   - `@AbapCatalog.sqlViewName: '...'`
+   - `@AbapCatalog.preserveKey: true|false`
+   - `@AbapCatalog.compiler.compareFilter: true|false`
 
-**Why removed:** Entity views don't create intermediate SQL views. The CDS entity IS the database object.
+3. Ensure required/recommended annotations
+   - Add `@EndUserText.label` if missing (default `'CDS Entity View'`)
+   - Add `@AccessControl.authorizationCheck: #NOT_REQUIRED` if missing
+   - Add `@Metadata.ignorePropagatedAnnotations: true` if missing
+   - Add `@Metadata.allowExtensions: true` if missing
 
----
+4. Ensure key field exists
+   - If no `key` or `KEY` found, add `key` to first field in the select list
 
-### 2.2 @AbapCatalog.preserveKey
-
-**Classic:**
-```abap
-@AbapCatalog.preserveKey: true
-define view Z_MY_VIEW ...
-```
-
-**Entity:**
-```abap
-define view entity Z_MY_VIEW_V2 ...
-```
-
-**Why removed:** Not supported in entity views. Key handling is automatic in entity views.
+Total concrete edits: 9 actions.
 
 ---
 
-### 2.3 @AbapCatalog.compiler.compareFilter
+## Name Generation
 
-**Classic:**
-```abap
-@AbapCatalog.compiler.compareFilter: true
-define view Z_MY_VIEW ...
-```
+Outside the source rewrite, `TRANSFORM` also sets:
 
-**Entity:**
-```abap
-define view entity Z_MY_VIEW_V2 ...
-```
+- `new_name = <old_name>_V2`
+- `new_sql  = <old_sql>_V2` (truncated to 16 chars when needed)
 
-**Why removed:** Obsolete compiler directive not needed in modern ABAP releases.
+Note:
+- Source transformation removes SQL view annotations for entity views, so `iv_new_sql_view` is currently not injected into source text.
 
 ---
 
-## 3. ✅ Required Annotations (ADDED)
+## Before/After Example
 
-### 3.1 @EndUserText.label
+### Before (Classic)
 
-**Status:** ✅ **REQUIRED** for entity views
-
-**Added if missing:**
 ```abap
-@EndUserText.label: 'CDS Entity View'
-```
-
-**Purpose:** Provides user-facing description for the view. Required in ABAP Cloud.
-
-**Best Practice:** Use meaningful labels that describe the business object.
-
----
-
-### 3.2 @AccessControl.authorizationCheck
-
-**Status:** ✅ **REQUIRED** for entity views
-
-**Added if missing:**
-```abap
-@AccessControl.authorizationCheck: #NOT_REQUIRED
-```
-
-**Purpose:** Defines authorization check behavior. Options:
-- `#CHECK` - Perform authorization check
-- `#NOT_REQUIRED` - No authorization check
-- `#NOT_ALLOWED` - Not allowed for consumption
-
-**Best Practice:** Use `#CHECK` in production, `#NOT_REQUIRED` for development/testing.
-
----
-
-### 3.3 @Metadata.ignorePropagatedAnnotations
-
-**Status:** ✅ **RECOMMENDED** for clean entity views
-
-**Added if missing:**
-```abap
-@Metadata.ignorePropagatedAnnotations: true
-```
-
-**Purpose:** Prevents automatic propagation of annotations from underlying data sources.
-
-**Best Practice:** Set to `true` for explicit annotation control and cleaner metadata.
-
----
-
-### 3.4 @Metadata.allowExtensions
-
-**Status:** ✅ **RECOMMENDED** for extensibility
-
-**Added if missing:**
-```abap
-@Metadata.allowExtensions: true
-```
-
-**Purpose:** Enables CDS view extensions via metadata extensions.
-
-**Best Practice:** Always enable unless there's a specific reason to prevent extensions.
-
----
-
-## 4. 🔑 Key Field Enhancement
-
-### Automatic KEY Addition
-
-**Status:** ✅ Applied to first field if no KEY exists
-
-**Classic (no KEY):**
-```abap
-define view Z_MY_VIEW as select from table {
-  field1,
-  field2
-}
-```
-
-**Entity (KEY added):**
-```abap
-define view entity Z_MY_VIEW_V2 as select from table {
-  key field1,
-  field2
-}
-```
-
-**Why:** Entity views **require** at least one KEY field. This is enforced by the ABAP compiler.
-
----
-
-## 📊 Complete Example
-
-### BEFORE: Classic CDS
-```abap
-@AbapCatalog.sqlViewName: 'ZCUSTOMER_V'
+@AbapCatalog.sqlViewName: 'ZCUSTOMER'
 @AbapCatalog.preserveKey: true
 @AbapCatalog.compiler.compareFilter: true
-define view Z_CUSTOMER_VIEW
-  as select from kna1
-{
+define view Z_CUSTOMER as select from kna1 {
   kunnr,
-  name1,
-  ort01
+  name1
 }
 ```
 
-### AFTER: Modern Entity CDS
+### After (Generated)
+
 ```abap
-@EndUserText.label: 'CDS Entity View'
-@AccessControl.authorizationCheck: #NOT_REQUIRED
-@Metadata.ignorePropagatedAnnotations: true
 @Metadata.allowExtensions: true
-define view entity Z_CUSTOMER_VIEW_V2
-  as select from kna1
-{
+@Metadata.ignorePropagatedAnnotations: true
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'CDS Entity View'
+define view entity Z_CUSTOMER as select from kna1 {
   key kunnr,
-  name1,
-  ort01
+  name1
 }
 ```
 
 ---
 
-## 🎯 Transformation Summary
+## Compliance Checklist
 
-| Category | Action | Count |
-|----------|--------|-------|
-| **Removed** | Deprecated annotations | 3 |
-| **Added** | Required annotations | 2 |
-| **Added** | Recommended annotations | 2 |
-| **Enhanced** | KEY field handling | 1 |
-| **Total** | Transformations applied | **8** |
-
----
-
-## 📋 Checklist: Modern CDS Entity
-
-Use this checklist to verify your entity views are fully modernized:
-
-### Must Have (REQUIRED)
-- [ ] ✅ `DEFINE VIEW ENTITY` syntax
-- [ ] ✅ At least one `key` field
-- [ ] ✅ `@EndUserText.label` annotation
-- [ ] ✅ `@AccessControl.authorizationCheck` annotation
-
-### Should Have (RECOMMENDED)
-- [ ] ✅ `@Metadata.ignorePropagatedAnnotations: true`
-- [ ] ✅ `@Metadata.allowExtensions: true`
-- [ ] ✅ No deprecated `@AbapCatalog.sqlViewName`
-- [ ] ✅ No deprecated `@AbapCatalog.preserveKey`
-- [ ] ✅ No deprecated `@AbapCatalog.compiler.compareFilter`
-
-### Nice to Have (OPTIONAL)
-- [ ] `@ObjectModel.usageType` for consumption definition
-- [ ] Semantic annotations (`@Semantics.*`)
-- [ ] Association annotations
-- [ ] Field-level `@EndUserText.label`
+Required checks for generated output:
+- `DEFINE VIEW ENTITY` exists
+- At least one `key` exists
+- No `@AbapCatalog.sqlViewName`
+- No `@AbapCatalog.preserveKey`
+- No `@AbapCatalog.compiler.compareFilter`
+- `@EndUserText.label` exists
+- `@AccessControl.authorizationCheck` exists
+- `@Metadata.ignorePropagatedAnnotations` exists
+- `@Metadata.allowExtensions` exists
 
 ---
 
-## 🚀 ABAP Cloud Compliance
+## Implementation Notes
 
-All transformations applied by this tool ensure **100% ABAP Cloud compliance**:
-
-✅ Uses only released APIs  
-✅ No deprecated annotations  
-✅ Follows SAP best practices  
-✅ Compatible with ABAP 7.50+  
-✅ Ready for BTP ABAP Environment  
+- Source retrieval uses `READ REPORT` first, then dynamic fallback `CL_DDL_TOOLS=>READ_DDL_SOURCE`.
+- Regex removal is case-sensitive to current annotation spellings used in source.
+- Key insertion is heuristic and targets the first field token after `{`.
 
 ---
 
-## 📚 References
+## Current Limitations
 
-- [SAP Help: CDS Entity Views](https://help.sap.com/docs/ABAP_PLATFORM_NEW)
-- [ABAP Cloud Development Guide](https://help.sap.com/docs/BTP)
-- [CDS Annotations Reference](https://help.sap.com/docs/ABAP_CDS)
-- [Clean ABAP Guidelines](https://github.com/SAP/styleguides)
+1. No dependency-aware ordering
+2. No parser-level CDS AST validation
+3. No automatic object creation/activation in commit mode
 
 ---
 
-**Last Updated:** 2026-05-23  
-**Tool Version:** 2.0.0  
-**Maintained By:** CDS2Entity Project
+**Last Updated:** 2026-05-30
+**Tool Version:** 2.1.0

@@ -1,67 +1,90 @@
 # Method Documentation - ZCL_CDS_MIGRATOR
 
+## Class Overview
+
+`ZCL_CDS_MIGRATOR` provides discovery, transformation, and (placeholder) creation for CDS modernization.
+
+Public API:
+- `FIND_IN_PACKAGE`
+- `TRANSFORM`
+- `CREATE_ENTITY`
+
+Private helpers:
+- `READ_SOURCE`
+- `IS_CLASSIC`
+- `GENERATE_ENTITY_SOURCE`
+
+---
+
 ## Public Methods
 
-### find_in_package( iv_package )
-**Purpose:** Find classic CDS views in package using DDHEADANNO
+### FIND_IN_PACKAGE( iv_package )
 
-**Parameters:**
-- `iv_package` (TYPE devclass) - Package name to scan
+Purpose:
+- Find classic CDS views in the given package.
 
-**Returns:** `ty_cds_list` - Table of classic CDS views with metadata
+Parameters:
+- `iv_package` TYPE `devclass`
 
-**How it works:**
-- Queries DDHEADANNO table for entries with annotation name `ABAPCATALOG.SQLVIEWNAME`
-- Joins with TADIR to filter by package and object type DDLS
-- Reads source code for each found CDS view
-- Extracts SQL view name from annotation value
+Returns:
+- `ty_cds_list`
 
-**Example:**
+Implementation details:
+1. Read DDLS object names from `TADIR` for the package.
+2. For each DDLS object, read source using `READ_SOURCE`.
+3. Keep only classic CDS based on `IS_CLASSIC`.
+4. Extract SQL view name via regex on `sqlViewName` annotation.
+5. Return `ty_cds_list` with source and metadata.
+
+Example:
 ```abap
 DATA(lt_cds) = NEW zcl_cds_migrator( )->find_in_package( 'ZPACKAGE' ).
 ```
 
 ---
 
-### transform( CHANGING cs_cds )
-**Purpose:** Transform classic CDS to entity CDS with modern annotations
+### TRANSFORM( CHANGING cs_cds )
 
-**Parameters:**
-- `cs_cds` (TYPE ty_cds, CHANGING) - CDS metadata structure to transform
+Purpose:
+- Generate target naming and transformed entity source.
 
-**How it works:**
-- Generates new CDS name by appending `_V2` suffix
-- Generates new SQL view name by appending `_V2` suffix (max 16 chars)
-- Calls `generate_entity_source()` to modernize the source code
+Parameters:
+- `cs_cds` TYPE `ty_cds` (CHANGING)
 
-**Example:**
+Implementation details:
+1. Set `new_name = <name>_V2`.
+2. Set `new_sql = <sql_view>_V2` and truncate to 16 chars when needed.
+3. Generate transformed source via `GENERATE_ENTITY_SOURCE`.
+
+Example:
 ```abap
 LOOP AT lt_cds ASSIGNING FIELD-SYMBOL(<cds>).
-  go_migrator->transform( CHANGING cs_cds = <cds> ).
+  lo_migrator->transform( CHANGING cs_cds = <cds> ).
 ENDLOOP.
 ```
 
 ---
 
-### create_entity( is_cds )
-**Purpose:** Create new entity CDS view in system
+### CREATE_ENTITY( is_cds )
 
-**Parameters:**
-- `is_cds` (TYPE ty_cds) - CDS metadata with generated entity source
+Purpose:
+- Extension point for creating entity CDS objects in system.
 
-**Returns:** `abap_bool` - Success indicator
+Parameters:
+- `is_cds` TYPE `ty_cds`
 
-**How it works:**
-- Placeholder method for future CDS creation API integration
-- Currently returns `false` and displays information message
-- Requires manual activation in SE24/SE80
+Returns:
+- `abap_bool`
 
-**Note:** Actual CDS creation requires specialized API that may vary by SAP release.
+Current behavior:
+- Returns `abap_false`.
+- Shows informational message about manual activation/creation.
+- Does not call a persistence API yet.
 
-**Example:**
+Example:
 ```abap
-IF go_migrator->create_entity( ls_cds ) = abap_true.
-  WRITE: / 'Created:', ls_cds-new_name.
+IF lo_migrator->create_entity( ls_cds ) = abap_true.
+  WRITE: / ls_cds-new_name, 'created'.
 ENDIF.
 ```
 
@@ -69,109 +92,104 @@ ENDIF.
 
 ## Private Methods
 
-### read_source( iv_name )
-**Purpose:** Read CDS source code from database tables
+### READ_SOURCE( iv_name )
 
-**Parameters:**
-- `iv_name` (TYPE ddlname) - CDS view name
+Purpose:
+- Read complete CDS source for a DDLS object.
 
-**Returns:** `string` - Complete CDS source code
+Parameters:
+- `iv_name` TYPE `ddlname`
 
-**How it works:**
-- First attempts to read from DDDDLSRC table (single-line storage)
-- If not found, reads from DDDDLSRC02BT table (multi-line storage)
-- Concatenates multi-line source with newline separator
-- Returns empty string on error
+Returns:
+- `string`
 
----
+Implementation details:
+1. Primary path: `READ REPORT iv_name INTO lt_source_tab`.
+2. Convert line table to single string using newline separator.
+3. Fallback path: dynamic call to `CL_DDL_TOOLS=>READ_DDL_SOURCE`.
+4. Any failure returns initial string (safe fallback).
 
-### is_classic( iv_source )
-**Purpose:** Check if CDS has sqlViewName annotation (classic CDS indicator)
-
-**Parameters:**
-- `iv_source` (TYPE string) - CDS source code
-
-**Returns:** `abap_bool` - True if classic CDS, false if entity
-
-**How it works:**
-- Checks if source contains `sqlViewName` annotation
-- Checks that source does NOT contain `VIEW ENTITY` keyword
-- Both conditions must be true for classic CDS
-
-**Note:** This method is still used internally for validation, though primary detection uses DDHEADANNO.
+Rationale:
+- `READ REPORT` is usually stable for DDLS source retrieval.
+- Dynamic fallback avoids hard dependency where API may vary.
 
 ---
 
-### generate_entity_source( iv_source, iv_new_sql_view )
-**Purpose:** Generate entity CDS source with all modern annotations
+### IS_CLASSIC( iv_source )
 
-**Parameters:**
-- `iv_source` (TYPE string) - Original classic CDS source
-- `iv_new_sql_view` (TYPE ddstrucobjname) - New SQL view name with _V2 suffix
+Purpose:
+- Identify whether source is classic CDS.
 
-**Returns:** `string` - Modernized entity CDS source
+Parameters:
+- `iv_source` TYPE `string`
 
-**How it works - 8 Transformations:**
+Returns:
+- `abap_bool`
 
-1. **Transform syntax:** `DEFINE VIEW` → `DEFINE VIEW ENTITY`
-
-2. **Remove deprecated annotations:**
-   - `@AbapCatalog.sqlViewName`
-   - `@AbapCatalog.preserveKey`
-   - `@AbapCatalog.compiler.compareFilter`
-
-3. **Add required annotations:**
-   - `@EndUserText.label` (required for entity views)
-   - `@AccessControl.authorizationCheck` (required)
-
-4. **Add recommended annotations:**
-   - `@Metadata.ignorePropagatedAnnotations: true`
-   - `@Metadata.allowExtensions: true`
-
-5. **Add KEY to first field** if no KEY exists (required in entity views)
+Rule:
+- True when source contains `sqlViewName` and does not contain `VIEW ENTITY`.
 
 ---
 
-## Method Call Flow
+### GENERATE_ENTITY_SOURCE( iv_source, iv_new_sql_view )
+
+Purpose:
+- Apply all source-level modernization edits.
+
+Parameters:
+- `iv_source` TYPE `string`
+- `iv_new_sql_view` TYPE `ddstrucobjname`
+
+Returns:
+- `string`
+
+Current transformation actions:
+1. Replace first `DEFINE VIEW ` with `DEFINE VIEW ENTITY `.
+2. Remove `@AbapCatalog.sqlViewName` annotation.
+3. Remove `@AbapCatalog.preserveKey` annotation.
+4. Remove `@AbapCatalog.compiler.compareFilter` annotation.
+5. Ensure `@EndUserText.label` exists (default `'CDS Entity View'`).
+6. Ensure `@AccessControl.authorizationCheck: #NOT_REQUIRED` exists.
+7. Ensure `@Metadata.ignorePropagatedAnnotations: true` exists.
+8. Ensure `@Metadata.allowExtensions: true` exists.
+9. Add `key` to first field when no key is present.
+
+Important note:
+- `iv_new_sql_view` is currently not used in replacement logic because SQL view annotations are removed for entity views.
+
+---
+
+## Call Sequence
 
 ```
-REPORT
-  ↓
-find_in_package()
-  ├─→ read_source() [for each CDS]
-  └─→ Returns: ty_cds_list
-  ↓
-transform() [for each CDS]
-  └─→ generate_entity_source()
-      ├─→ Remove deprecated annotations
-      ├─→ Add modern annotations
-      └─→ Add KEY field
-  ↓
-create_entity() [optional, if commit mode]
-  └─→ Create new CDS view (manual for now)
+ZCDS_MIGRATION
+  -> FIND_IN_PACKAGE
+     -> READ_SOURCE (per DDLS)
+     -> IS_CLASSIC
+  -> TRANSFORM (per classic CDS)
+     -> GENERATE_ENTITY_SOURCE
+  -> CREATE_ENTITY (commit mode only, placeholder)
 ```
 
 ---
 
 ## Type Definitions
 
-### ty_cds
-Structure holding CDS metadata for migration:
+### TY_CDS
 
 ```abap
 BEGIN OF ty_cds,
-  name        TYPE ddlname,           " Original CDS name
-  sql_view    TYPE ddstrucobjname,    " Original SQL view name
-  source      TYPE string,            " Original source code
-  new_name    TYPE ddlname,           " New CDS name (with _V2)
-  new_sql     TYPE ddstrucobjname,    " New SQL view name (with _V2)
-  new_source  TYPE string,            " Modernized entity source
-  is_classic  TYPE abap_bool,         " Classic CDS indicator
+  name        TYPE ddlname,
+  sql_view    TYPE ddstrucobjname,
+  source      TYPE string,
+  new_name    TYPE ddlname,
+  new_sql     TYPE ddstrucobjname,
+  new_source  TYPE string,
+  is_classic  TYPE abap_bool,
 END OF ty_cds
 ```
 
-### ty_cds_list
-Table type for multiple CDS views:
+### TY_CDS_LIST
 
 ```abap
 ty_cds_list TYPE STANDARD TABLE OF ty_cds WITH KEY name
@@ -179,34 +197,15 @@ ty_cds_list TYPE STANDARD TABLE OF ty_cds WITH KEY name
 
 ---
 
-## Usage Patterns
+## Test Coverage Summary
 
-### Pattern 1: Display Only (Preview)
-```abap
-DATA(lo_migrator) = NEW zcl_cds_migrator( ).
-DATA(lt_cds) = lo_migrator->find_in_package( 'ZPACKAGE' ).
-
-LOOP AT lt_cds ASSIGNING FIELD-SYMBOL(<cds>).
-  lo_migrator->transform( CHANGING cs_cds = <cds> ).
-  WRITE: / <cds>-name, '→', <cds>-new_name.
-ENDLOOP.
-```
-
-### Pattern 2: With Creation (Commit)
-```abap
-DATA(lo_migrator) = NEW zcl_cds_migrator( ).
-DATA(lt_cds) = lo_migrator->find_in_package( 'ZPACKAGE' ).
-
-LOOP AT lt_cds ASSIGNING FIELD-SYMBOL(<cds>).
-  lo_migrator->transform( CHANGING cs_cds = <cds> ).
-  
-  IF lo_migrator->create_entity( <cds> ) = abap_true.
-    WRITE: / <cds>-new_name, 'created successfully'.
-  ENDIF.
-ENDLOOP.
-```
+The current ABAP Unit test validates `TRANSFORM` behavior for:
+- Entity syntax conversion
+- Deprecated annotation removal
+- Required/recommended annotation insertion
+- Key injection
 
 ---
 
-**Last Updated:** 2026-05-23  
+**Last Updated:** 2026-05-30
 **Version:** 2.1.0

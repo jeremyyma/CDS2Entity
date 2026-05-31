@@ -30,6 +30,7 @@ CLASS zcl_cds_migrator DEFINITION
       IMPORTING is_cds           TYPE ty_cds
       RETURNING VALUE(rv_success) TYPE abap_bool.
 
+protected section.
   PRIVATE SECTION.
     " Read CDS source code from database tables
     METHODS read_source
@@ -49,76 +50,113 @@ CLASS zcl_cds_migrator DEFINITION
 
 ENDCLASS.
 
+CLASS ZCL_CDS_MIGRATOR IMPLEMENTATION.
 
-CLASS zcl_cds_migrator IMPLEMENTATION.
 
   METHOD find_in_package.
-    " Find classic CDS views in package - first get all DDLS, then filter by annotation
+    " Find CDS views with sqlViewName annotation in specified package
+    " DDHEADANNO structure: DDLNAME (object name), NAME (annotation name), VALUE
+    SELECT ddheadanno~STRUCOBJN as name,
+           ddheadanno~value
+      FROM ddheadanno
+      INNER JOIN tadir
+        ON tadir~obj_name = ddheadanno~STRUCOBJN
+      WHERE ddheadanno~name = 'ABAPCATALOG.SQLVIEWNAME'
+"        AND tadir~pgmid = 'R3TR'
+        AND tadir~object = 'DDLS'
+        AND tadir~devclass = @iv_package
+      INTO TABLE @DATA(lt_classic_cds).
 
-    " Step 1: Get all DDLS objects in package
-    SELECT obj_name FROM tadir
-      WHERE pgmid = 'R3TR'
-        AND object = 'DDLS'
-        AND devclass = @iv_package
-      INTO TABLE @DATA(lt_ddls).
+    LOOP AT lt_classic_cds ASSIGNING FIELD-SYMBOL(<cds>).
+      " Convert to correct type (C 240 -> C 40)
+      DATA(lv_ddlname) = CONV ddlname( <cds>-name ).
+      DATA(lv_source) = read_source( lv_ddlname ).
 
-    CHECK lt_ddls IS NOT INITIAL.
+      " Keep candidate even if source cannot be read; this avoids silently
+      " dropping valid DDLS hits from DDHEADANNO.
 
-    " Step 2: Check each one for classic CDS (has sqlViewName annotation)
-    LOOP AT lt_ddls ASSIGNING FIELD-SYMBOL(<ddls>).
-      DATA(lv_source) = read_source( <ddls>-obj_name ).
-
-      " Check if classic CDS (has sqlViewName, not VIEW ENTITY)
-      CHECK is_classic( lv_source ).
-
-      " Extract SQL view name from source
-      DATA(lv_sql_view) = ''.
-      FIND REGEX 'sqlViewName\s*:\s*''([^'']+)'''
-        IN lv_source
-        SUBMATCHES lv_sql_view
-        IGNORING CASE.
+      " Extract SQL view name from annotation value (format: 'VIEWNAME')
+      DATA(lv_sql_view) = <cds>-value.
+      REPLACE ALL OCCURRENCES OF '''' IN lv_sql_view WITH ''.
 
       APPEND VALUE #(
-        name       = <ddls>-obj_name
+        name       = lv_ddlname
         sql_view   = lv_sql_view
         source     = lv_source
-        is_classic = abap_true
+        is_classic = COND #( WHEN lv_source IS INITIAL
+                             THEN abap_true
+                             ELSE is_classic( lv_source ) )
       ) TO rt_results.
     ENDLOOP.
   ENDMETHOD.
 
 
   METHOD read_source.
+    DATA: lt_source_tab TYPE STANDARD TABLE OF string WITH EMPTY KEY,
+          lo_handler    TYPE REF TO object,
+          lx_root       TYPE REF TO cx_root.
+
+    CLEAR rv_source.
+
+    " 1) Primary source read from DDDDLSRC (active then inactive)
+    SELECT SINGLE source
+      FROM ddddlsrc
+      WHERE ddlname  = @iv_name
+        AND as4local = 'A'
+      INTO @rv_source.
+
+    IF rv_source IS NOT INITIAL.
+      RETURN.
+    ENDIF.
+
+    SELECT SINGLE source
+      FROM ddddlsrc
+      WHERE ddlname  = @iv_name
+        AND as4local = 'I'
+      INTO @rv_source.
+
+    IF rv_source IS NOT INITIAL.
+      RETURN.
+    ENDIF.
+
+    " 2) Fallback to official OO DDLS handler API
     TRY.
-        " Read CDS source from repository
-        DATA lt_source_tab TYPE TABLE OF string.
+        CALL METHOD ('CL_DD_DDL_HANDLER_FACTORY')=>('CREATE')
+          RECEIVING
+            ro_handler = lo_handler.
 
-        " Use READ REPORT to get source (works for DDLS objects)
-        READ REPORT iv_name INTO lt_source_tab.
-
-        IF sy-subrc = 0 AND lt_source_tab IS NOT INITIAL.
-          " Convert table to single string
-          rv_source = concat_lines_of(
-            table = lt_source_tab
-            sep   = cl_abap_char_utilities=>newline
-          ).
-        ELSE.
-          " Fallback: Try using CL_DDL_TOOLS if available
+        IF lo_handler IS BOUND.
           TRY.
-              CALL METHOD ('CL_DDL_TOOLS')=>('READ_DDL_SOURCE')
+              CALL METHOD lo_handler->('READ_SOURCE')
                 EXPORTING
-                  iv_ddlname = iv_name
+                  name   = iv_name
                 RECEIVING
-                  rv_source  = rv_source.
+                  source = rv_source.
             CATCH cx_sy_dyn_call_error.
-              " Method not available, return empty
-              CLEAR rv_source.
+              CLEAR lt_source_tab.
+              CALL METHOD lo_handler->('READ_SOURCE')
+                EXPORTING
+                  name      = iv_name
+                RECEIVING
+                  rt_source = lt_source_tab.
+
+              IF lt_source_tab IS NOT INITIAL.
+                rv_source = concat_lines_of(
+                  table = lt_source_tab
+                  sep   = cl_abap_char_utilities=>newline
+                ).
+              ENDIF.
           ENDTRY.
         ENDIF.
 
-      CATCH cx_root.
+      CATCH cx_root INTO lx_root.
+        MESSAGE |Could not read CDS source for { iv_name } via DDDDLSRC and DDLS handler API: { lx_root->get_text( ) }| TYPE 'I'.
         CLEAR rv_source.
     ENDTRY.
+
+    IF rv_source IS INITIAL.
+      MESSAGE |Could not read CDS source for { iv_name } via DDDDLSRC and DDLS handler API.| TYPE 'I'.
+    ENDIF.
   ENDMETHOD.
 
 
@@ -218,22 +256,66 @@ CLASS zcl_cds_migrator IMPLEMENTATION.
 
 
   METHOD create_entity.
-    " Create new CDS entity view using BAPI or direct insert
-    " Note: Actual implementation requires CDS API or manual creation
-    " This method prepares the source for creation
     rv_success = abap_false.
 
+    IF is_cds-new_name IS INITIAL OR is_cds-new_source IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    DATA: lv_name    TYPE ddlname,
+          lt_source  TYPE STANDARD TABLE OF string WITH EMPTY KEY,
+          lt_names   TYPE STANDARD TABLE OF ddlname WITH EMPTY KEY,
+          lo_handler TYPE REF TO object,
+          lx_error   TYPE REF TO cx_root.
+
+    lv_name = is_cds-new_name.
+
     TRY.
-        " TODO: Implement actual CDS creation using appropriate API
-        " For now, return false to indicate manual creation needed
-        " In real scenario, use cl_dd_ddl_handler_factory or similar API
+        SPLIT is_cds-new_source AT cl_abap_char_utilities=>newline INTO TABLE lt_source.
+        APPEND lv_name TO lt_names.
 
-        " Placeholder for future implementation
-        MESSAGE 'Entity creation requires manual activation in SE24/SE80' TYPE 'I'.
+        " Official path: factory CREATE -> WRITE_SOURCE -> ACTIVATE
+        lo_handler = cl_dd_ddl_handler_factory=>create( ).
 
-      CATCH cx_root INTO DATA(lx_error).
-        MESSAGE lx_error->get_text( ) TYPE 'E'.
+        IF lo_handler IS NOT BOUND.
+          MESSAGE |DDLS handler factory CREATE() did not return a handler for { lv_name }.| TYPE 'I'.
+          RETURN.
+        ENDIF.
+
+        TRY.
+            CALL METHOD lo_handler->('WRITE_SOURCE')
+              EXPORTING
+                name   = lv_name
+                source = lt_source.
+          CATCH cx_sy_dyn_call_error.
+            TRY.
+                CALL METHOD lo_handler->('WRITE')
+                  EXPORTING
+                    name   = lv_name
+                    source = lt_source.
+              CATCH cx_sy_dyn_call_error.
+                CALL METHOD lo_handler->('SAVE')
+                  EXPORTING
+                    iv_ddlname = lv_name
+                    it_source  = lt_source.
+            ENDTRY.
+        ENDTRY.
+
+        TRY.
+            CALL METHOD lo_handler->('ACTIVATE')
+              EXPORTING
+                names = lt_names.
+          CATCH cx_sy_dyn_call_error.
+            CALL METHOD lo_handler->('ACTIVATE')
+              EXPORTING
+                name = lv_name.
+        ENDTRY.
+
+        rv_success = abap_true.
+
+      CATCH cx_root INTO lx_error.
+        MESSAGE lx_error->get_text( ) TYPE 'I'.
+        rv_success = abap_false.
     ENDTRY.
   ENDMETHOD.
-
 ENDCLASS.

@@ -19,28 +19,28 @@ ZABAPGIT → New Online → https://github.com/jeremyyma/CDS2Entity.git
 ```
 SE38 → ZCDS_MIGRATION
   Package: [Your package]
-  Mode: Display Only (preview) or Commit (create views)
+  Mode: Display Only (preview) or Commit (placeholder flow)
   → F8
 ```
 
 ## What It Does
 
-1. **Finds** classic CDS views in package using DDHEADANNO table
+1. **Finds** DDLS objects in package using TADIR and filters classic CDS by source
 2. **Removes** 3 deprecated annotations
 3. **Adds** 4 modern annotations
 4. **Transforms** syntax to entity format
 5. **Ensures** KEY fields are present
 6. **Generates** new names with _V2 suffix
-7. **Displays** results in ALV grid or creates new views
+7. **Displays** results in ALV grid; commit path is currently a placeholder
 
-**Result:** Fully modernized, ABAP Cloud-ready entity views!
+**Result:** Modernized preview-ready entity source with clean migration output.
 
 ## The Code
 
 ### One Class: `ZCL_CDS_MIGRATOR`
 
 ```abap
-" Find classic CDS views using DDHEADANNO annotation table
+" Find classic CDS views by scanning DDLS in package and checking source
 DATA(lt_cds) = NEW zcl_cds_migrator( )->find_in_package( 'ZPACKAGE' ).
 
 " Transform to entity CDS with modern annotations
@@ -72,7 +72,7 @@ ENDLOOP.
 | `@Metadata.allowExtensions` | ✅ Added |
 | First field → `key` | ✅ Enhanced |
 
-**Total: 8 modernizations applied automatically!**
+**Total: 9 transformation actions applied automatically!**
 
 📖 **See [TRANSFORMATION_GUIDE.md](TRANSFORMATION_GUIDE.md) for complete details**
 
@@ -100,7 +100,7 @@ Pull → Activate
 ```abap
 DATA(lo_migrator) = NEW zcl_cds_migrator( ).
 
-" Find all classic CDS in package using DDHEADANNO
+" Find all classic CDS in package via TADIR + source checks
 DATA(lt_cds) = lo_migrator->find_in_package( 'ZPACKAGE' ).
 
 WRITE: / 'Found', lines( lt_cds ), 'classic CDS views'.
@@ -129,7 +129,7 @@ ENDLOOP.
 
 **Mode:**
 - **Display Only (P_DISP):** Preview transformations in ALV grid (default)
-- **Commit (P_COMMIT):** Create new entity views in system
+- **Commit (P_COMMIT):** Execute creation flow (current `create_entity` method is placeholder)
 
 ## Example Transformation
 
@@ -148,7 +148,7 @@ define view Z_MY_VIEW as select from scarr {
 @AccessControl.authorizationCheck: #NOT_REQUIRED
 @Metadata.ignorePropagatedAnnotations: true
 @Metadata.allowExtensions: true
-define view entity Z_MY_VIEW_V2 as select from scarr {
+define view entity Z_MY_VIEW as select from scarr {
   key carrid,
   carrname
 }
@@ -182,8 +182,7 @@ Compare to previous version: **~1,800 lines** → **~220 lines** (88% reduction!
 ✅ **Single Responsibility** - One class, one job  
 ✅ **Simple Names** - `find_in_package`, `transform`  
 ✅ **Short Methods** - Average 10 lines  
-✅ **No Comments** - Code explains itself  
-✅ **Minimal API** - Only 2 public methods  
+✅ **Minimal API** - 3 focused public methods  
 ✅ **Type Safety** - Strong typing everywhere  
 ✅ **Testable** - Unit tests included  
 ✅ **ABAP 7.50+** - Modern ABAP syntax  
@@ -197,7 +196,11 @@ SE24 → ZCL_CDS_MIGRATOR → Test → Execute (Ctrl+Shift+F10)
 ## Requirements
 
 - SAP NetWeaver 7.50+
-- ABAP authorization for reading/creating DDLS objects
+- ABAP authorization for reading DDLS objects
+
+## Current Limitation
+
+- `create_entity` is intentionally a placeholder and does not persist new DDLS objects yet.
 
 ## License
 
